@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Materials</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Core Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    
+    <!-- CDN Meshopt Decoder -->
+    <script src="https://cdn.jsdelivr.net/npm/meshoptimizer@0.18.1/meshopt_decoder.js"></script>
+
+    <script>
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        
+        // 1. เปิดใช้งานการคำนวณเงา (Shadow Map)
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        
+        document.body.appendChild(renderer.domElement);
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x222222);
+
+        const camera = new THREE.PerspectiveCamera(
+            45,
+            window.innerWidth / window.innerHeight,
+            0.01,
+            10000
+        );
+        camera.position.set(0, 0, 10);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+        // 2. ปรับปรุงระบบแสง (Lighting)
+        // ลด AmbientLight เพื่อไม่ให้แสงซัดจนภาพขาวโพน (จากเดิม 2.0 เหลือ 0.5)
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+
+        // แสงหลักสร้างเงา (Directional Light)
+        const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.0);
+        dirLight1.position.set(5, 12, 8);
+        dirLight1.castShadow = true; // ให้แสงส่งเงา
+        dirLight1.shadow.mapSize.width = 2048; // ความละเอียดเงา
+        dirLight1.shadow.mapSize.height = 2048;
+        scene.add(dirLight1);
+
+        // แสงส่องซัพพอร์ตมุมมืด (Fill Light)
+        const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+        fillLight.position.set(-5, 5, -5);
+        scene.add(fillLight);
+
+        // MeshoptDecoder setup and model loading
+        MeshoptDecoder.ready.then(() => {
+            const gltfLoader = new THREE.GLTFLoader();
+            gltfLoader.setMeshoptDecoder(MeshoptDecoder);
+
+            const glbUrl = 'https://watcharapong1451.github.io/3D_Portfolio_.glb';
+
+            gltfLoader.load(
+                glbUrl,
+                (gltf) => {
+                    const model = gltf.scene;
+
+                    // 3. วนลูปตั้งค่าให้ทุก Object รองรับการรับ-ทอดเงา และแก้ Color Space
+                    model.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                            
+                            // แก้ปัญหาสีและรูปภาพขาวเว่อร์
+                            if (child.material) {
+                                child.material.needsUpdate = true;
+                                if (child.material.map) {
+                                    child.material.map.encoding = THREE.sRGBEncoding;
+                                }
+                            }
+                        }
+                    });
+
+                    scene.add(model);
+
+                    // Center model within view
+                    const box = new THREE.Box3().setFromObject(model);
+                    const center = box.getCenter(new THREE.Vector3());
+                    const size = box.getSize(new THREE.Vector3());
+
+                    model.position.x += (model.position.x - center.x);
+                    model.position.y += (model.position.y - center.y);
+                    model.position.z += (model.position.z - center.z);
+
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const fov = camera.fov * (Math.PI / 180);
+                    let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+                    cameraZ *= 2.5;
+
+                    camera.position.set(0, maxDim / 2, cameraZ);
+                    camera.lookAt(0, 0, 0);
+
+                    controls.target.set(0, 0, 0);
+                    controls.update();
+                },
+                (xhr) => {
+                    if (xhr.lengthComputable) {
+                        console.log((xhr.loaded / xhr.total * 100).toFixed(2) + '% loaded');
+                    }
+                },
+                (error) => {
+                    console.error('Error loading file:', error);
+                }
+            );
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+
+</html>
